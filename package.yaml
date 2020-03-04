@@ -26,6 +26,8 @@ dependencies:
 - containers
 - vector
 - generic-deriving
+- attoparsec
+- parsers
 
 library:
   source-dirs: src

@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Lib
   ( toText
+  , tyToText
   , KVal
   , int
   , float
@@ -16,6 +17,7 @@ module Lib
   , ToKdr(..)
   , infer
   , TypeError(..)
+  , parse
   )
 where
 
@@ -33,10 +35,15 @@ import           Data.Bifunctor                 ( first )
 import           Data.Foldable                  ( foldlM )
 import           Data.Maybe                     ( isJust )
 
+import           Data.Attoparsec.Text           ( Parser )
+import qualified Data.Attoparsec.Text          as A
+import qualified Text.Parser.Token             as Token
+import           Control.Applicative
+
 import           GHC.Generics
 
 data KVal = KInt !Int
-          | KFloat !Float
+          | KFloat !Double
           | KString !Text
           | KBool !Bool
           | KRec Text (Map Text KVal)
@@ -49,7 +56,7 @@ data KVal = KInt !Int
 int :: Int -> KVal
 int = KInt
 
-float :: Float -> KVal
+float :: Double -> KVal
 float = KFloat
 
 string :: Text -> KVal
@@ -94,6 +101,19 @@ toText (KList elements) =
   brackets . T.intercalate "," . map toText $ Vector.toList elements
 toText (KSet elements) =
   braces . T.intercalate "," . map toText $ Set.toList elements
+
+tyToText :: KType -> Text
+tyToText TInt    = "int"
+tyToText TFloat  = "float"
+tyToText TString = "string"
+tyToText TBool   = "bool"
+tyToText (TRec name fields) =
+  let f (label, ty) = label <> ":" <> tyToText ty
+  in  name <> tupled (map f (Map.toList fields))
+tyToText (TList ty     ) = brackets (tyToText ty)
+tyToText (TSet  ty     ) = braces (tyToText ty)
+tyToText (TSum  records) = T.intercalate "|" (map tyToText (Map.elems records))
+tyToText TUnknown        = "?"
 
 parens :: Text -> Text
 parens t = "(" <> t <> ")"
@@ -286,3 +306,40 @@ instance (GetConName a, GetConName b) => GetConName (a :+: b) where
 
 instance (Constructor c) => GetConName (C1 c a) where
   getConName = T.pack . conName
+
+-- Parsing
+
+parse :: Text -> Either String KVal
+parse = A.parseOnly (parseKVal <* A.endOfInput)
+
+parseKVal :: Parser KVal
+parseKVal =
+  fmap (KInt . fromInteger) Token.integer
+    <|> fmap KString        Token.stringLiteral
+    <|> fmap KFloat         Token.double
+    <|> fmap KBool          parseBool
+    <|> fmap KList          parseKList
+    <|> fmap KSet           parseKSet
+    <|> fmap (uncurry KRec) parseKRec
+
+parseBool :: Parser Bool
+parseBool = ("true" >> pure True) <|> ("false" >> pure False)
+
+parseKList :: Parser (Vector KVal)
+parseKList = Vector.fromList <$> Token.brackets (Token.commaSep parseKVal)
+
+parseKSet :: Parser (Set KVal)
+parseKSet = Set.fromList <$> Token.braces (Token.commaSep parseKVal)
+
+parseKRec :: Parser (Text, Map Text KVal)
+parseKRec = do
+  name   <- A.takeWhile1 (/= '(')
+  fields <- Map.fromList <$> Token.parens (Token.commaSep parseField)
+  pure (name, fields)
+ where
+  parseField :: Parser (Text, KVal)
+  parseField = do
+    label <- A.takeWhile1 (\c -> c /= ':' && c /= ')')
+    _     <- A.char ':'
+    val   <- parseKVal
+    pure (label, val)

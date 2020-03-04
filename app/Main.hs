@@ -39,21 +39,10 @@ data RefundReason = CustomerRequest
 instance ToKdr RefundReason
 
 main :: IO ()
-main =
-  let example1 = list
-        [ record "user" [("name", string "alice"), ("age", int 25)]
-        , record "user" [("name", string "bob"), ("age", int 24)]
-        ]
-      example2 = toKdr Dog { barks = True, age = 5, name = "Rover" }
-      example3 = toKdr
-        [ Payment { state = Created, amount = 15, customerId = "123" }
-        , Payment { state      = Refunded (Other "something broke")
-                  , amount     = 20
-                  , customerId = "123"
-                  }
-        ]
-  in  do
-        print example1
-        T.putStrLn (toText example1)
-        T.putStrLn (toText example2)
-        T.putStrLn (toText example3)
+main = do
+  input <- T.getContents
+  case parse input of
+    Left  err -> putStrLn $ "Parse error: " <> err
+    Right val -> case infer val of
+      Left  tyErr -> putStrLn $ "Type error: " <> show tyErr
+      Right ty    -> T.putStrLn $ toText val <> " : " <> tyToText ty
