@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Main where
 
-import           Lib
+import           Kdr
 import           Data.Text                      ( Text )
 import qualified Data.Text.IO                  as T
 import           GHC.Generics
@@ -41,8 +41,8 @@ instance ToKdr RefundReason
 main :: IO ()
 main = do
   input <- T.getContents
-  case parse input of
+  case parseKVal input of
     Left  err -> putStrLn $ "Parse error: " <> err
     Right val -> case infer val of
       Left  tyErr -> putStrLn $ "Type error: " <> show tyErr
-      Right ty    -> T.putStrLn $ toText val <> " : " <> tyToText ty
+      Right ty    -> T.putStrLn $ printKVal val <> " : " <> printKType ty
